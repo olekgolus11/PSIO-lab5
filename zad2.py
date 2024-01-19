@@ -1,63 +1,48 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-from skimage import data
+from scipy.signal import convolve2d
+from skimage import img_as_float
 from skimage.color import rgb2gray
-from scipy.ndimage import maximum_filter, minimum_filter
-from scipy.fft import fft2, ifft2, fftshift, ifftshift
+from skimage.filters import gaussian
+from skimage.io import imread
 
+# Load the image (replace with the path to your image file)
 
-def apply_descreen(image, max_filter_size=3, min_filter_size=3):
-    # Transform the image to frequency domain
-    f_shifted = fftshift(fft2(image))
+image_float = rgb2gray(cv2.imread("soldier.png"))
 
-    # Calculate the magnitude spectrum
-    magnitude_spectrum = np.abs(f_shifted)
+# Define a kernel for high-pass filtering
+kernel = np.array([[-1, -1, -1],
+                   [-1,  8, -1],
+                   [-1, -1, -1]])
 
-    # Find local maxima using a maximum filter
-    local_maxima = maximum_filter(magnitude_spectrum, size=max_filter_size)
+# Apply the high-pass filter
+high_pass_img = convolve2d(image_float, kernel, mode='same', boundary='wrap')
 
-    # Reduce the maxima by using a minimum filter
-    reduced_maxima = minimum_filter(local_maxima, size=min_filter_size)
+# Normalize the high-pass filtered image
+high_pass_img = (high_pass_img - high_pass_img.min()) / (high_pass_img.max() - high_pass_img.min())
 
-    # Find the maxima locations
-    maxima_locations = magnitude_spectrum == reduced_maxima
+# Apply a low-pass filter (Gaussian blur) to the high-pass image
+low_pass_img = gaussian(high_pass_img, sigma=2)
 
-    # Suppress the maxima in the frequency domain by setting them to the mean value
-    mean_val = np.mean(magnitude_spectrum)
-    suppressed_spectrum = np.where(maxima_locations, mean_val, magnitude_spectrum)
+# Extract the texture pattern
+texture_pattern = high_pass_img - low_pass_img
 
-    # Replace the original magnitude spectrum with the suppressed one
-    f_shifted_suppressed = f_shifted / magnitude_spectrum * suppressed_spectrum
+# Normalize the texture pattern
+texture_pattern = (texture_pattern - texture_pattern.min()) / (texture_pattern.max() - texture_pattern.min())
 
-    # Shift back and inverse FFT to get back to image domain
-    img_descreened = np.abs(ifft2(ifftshift(f_shifted_suppressed)))
+# Subtract the texture pattern from the original image to descreen
+descreened_image = image_float - texture_pattern
 
-    return img_descreened, magnitude_spectrum, suppressed_spectrum
+# Normalize the descreened image
+descreened_image = (descreened_image - descreened_image.min()) / (descreened_image.max() - descreened_image.min())
 
+# Save the descreened image (optional)
+descreened_image_path = 'path_to_save_descreened_image.png'  # Replace with the desired save location
+plt.imsave(descreened_image_path, descreened_image, cmap='gray')
 
-# Load a sample image from skimage.data and convert it to grayscale
-image_gray = rgb2gray(cv2.imread("soldier.png"))
-
-# Apply descreen algorithm to the image
-img_descreened, magnitude_spectrum, suppressed_spectrum = apply_descreen(image_gray)
-
-# Display the images
-fig, axs = plt.subplots(1, 3, figsize=(18, 6))
-
-# Original image
-axs[0].imshow(image_gray, cmap='gray')
-axs[0].set_title('Original Image')
-axs[0].axis('off')
-
-# Magnitude spectrum of the original image
-axs[1].imshow(np.log(1 + magnitude_spectrum), cmap='gray')
-axs[1].set_title('Magnitude Spectrum (Before)')
-axs[1].axis('off')
-
-# Descreened image
-axs[2].imshow(img_descreened, cmap='gray')
-axs[2].set_title('Descreened Image')
-axs[2].axis('off')
-
+# Display the results
+plt.imshow(descreened_image, cmap='gray')
+plt.title('Descreened Image')
+plt.axis('off')
 plt.show()
